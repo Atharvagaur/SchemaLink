@@ -1,0 +1,41 @@
+# LLM configuration (local only, contains API keys - do not commit)
+llm_config.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Runtime outputs (do not commit)
+app_runs/
+results/
+cache/
+
+# Large datasets (do not commit - download separately)
+spider/
+bird/
+
+# Local secrets
+key.txt

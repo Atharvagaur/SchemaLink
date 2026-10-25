@@ -1,0 +1,14 @@
+rank_bm25
+sentence-transformers
+numpy
+rapidfuzz
+sqlglot
+tiktoken
+lightgbm
+openai
+pandas
+matplotlib
+pytest
+pyyaml
+tqdm
+scikit-learn

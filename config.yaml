@@ -1,0 +1,43 @@
+datasets:
+  spider:
+    root: .            # paths below are relative to this
+    dev: spider/dev.json
+    tables: spider/tables.json
+    train: spider/train_spider.json
+    db_root: spider/database
+  bird:
+    root: .
+    dev: bird/dev.json
+    tables: bird/dev_tables.json
+    train: bird/train/train.json
+    db_root: bird/dev_databases
+
+experiments:
+  seed: 0
+  n_questions: 150
+  smoke_n: 5
+  cache_dir: cache
+  results_dir: results
+  exemplars_path: exemplars.json   # 3 fixed few-shot examples, built from train
+  budgets:
+    spider: [250, 500, 1000, 2000, 4000]
+    bird: [1000, 2000, 4000, 8000, 16000]
+  absl_flags:                # cascade-signature ablations
+    use_predictor: true
+    sig_exec: true
+    sig_nonempty: true
+    sig_agree: true
+    use_value_index: true
+    use_self_consistency: true
+
+generator:
+  base_url: https://openrouter.ai/api/v1
+  model: "cohere/north-mini-code:free"   # or set GENERATOR_MODEL_SLUG env var
+  max_tokens: 512
+  temperature: 0.0
+  timeout: 60
+  workers: 4
+  # USD per 1M tokens, used only for the reported cost_per_1k_queries metric.
+  # Set these to your provider's rates; 0.0 = report cost as 0.
+  price_input_per_mtok: 0.0
+  price_output_per_mtok: 0.0
