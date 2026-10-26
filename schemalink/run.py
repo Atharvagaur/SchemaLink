@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from schemalink.budget import enforce, serialise
+from schemalink.budget import count_tokens, enforce, serialise
 from schemalink.config import load_config
 from schemalink.difficulty import (
     compute_features,
@@ -216,8 +216,6 @@ def eval_fixed(
                 for e in selected if not e.is_table}
     recall, precision = compute_schema_recall_precision(sel_cols, gold_labels)
 
-    full_toks = len(schema_text)  # placeholder; replaced by real count below
-    from schemalink.budget import count_tokens
     full_toks = count_tokens(full_schema_text) if full_schema_text else 1
     compression = (schema_tokens / full_toks) if full_toks else 1.0
 
@@ -498,7 +496,11 @@ def run_experiment(args) -> int:
                     "error": err or result.get("error"),
                 })
 
-                # ABSL EX under each cap B (max tier allowed)
+                # ABSL EX under each cap B (max tier allowed).
+                # tier_records now holds one entry per tier run (including
+                # failed tiers), so picking the largest-budget record with
+                # budget <= cap models "what ABSL would return if it could
+                # not escalate past this cap".
                 for cap in budgets:
                     recs = [r for r in result["tier_records"]
                             if r["budget"] <= cap]

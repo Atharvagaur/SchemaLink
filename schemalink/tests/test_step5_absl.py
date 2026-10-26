@@ -93,6 +93,43 @@ class TestABSLAlwaysFail:
         assert len(result["escalations"]) == 2  # 1->2 and 2->3
         assert len(gen.calls) == 3  # one call per tier
 
+    def test_tier_records_all_failed(self, tmp_db):
+        els = _mk_elements()
+        gen = _MockGeneratorAlwaysBad()
+        result = run_absl(
+            question="q", evidence="e", elements=els,
+            db_index=None, query_emb=None, db_path=str(tmp_db),
+            generator=gen, tiers=[100, 200, 400],
+            start_tier=0,
+            flags={"use_self_consistency": True},
+        )
+        # one record per tier, none passed
+        assert len(result["tier_records"]) == 3
+        budgets = [r["budget"] for r in result["tier_records"]]
+        assert budgets == [100, 200, 400]
+        assert all(not r["passed"] for r in result["tier_records"])
+        assert all(r["sql"] for r in result["tier_records"])
+
+    def test_tier_records_good_at_top_tier(self, tmp_db):
+        els = _mk_elements()
+        gen = _MockGeneratorGoodAtTopTier(str(tmp_db))
+        result = run_absl(
+            question="q", evidence="e", elements=els,
+            db_index=None, query_emb=None, db_path=str(tmp_db),
+            generator=gen, tiers=[10, 50, 2000],
+            start_tier=0,
+            flags={"use_self_consistency": True},
+        )
+        # one record per tier tried, increasing budget order
+        budgets = [r["budget"] for r in result["tier_records"]]
+        assert budgets == sorted(budgets)
+        assert len(result["tier_records"]) >= 1
+        # only the last tier tried passed; all before it failed
+        passed = [r["passed"] for r in result["tier_records"]]
+        assert all(not p for p in passed[:-1])
+        assert passed[-1] is True
+        assert result["tier_records"][-1]["sql"] == "SELECT name FROM singer"
+
     def test_token_accounting_sums_all_tiers(self, tmp_db):
         els = _mk_elements()
         gen = _MockGeneratorAlwaysBad()

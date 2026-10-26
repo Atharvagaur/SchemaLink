@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from pathlib import Path
+import re
 import yaml
 import json
 import os
@@ -164,6 +166,56 @@ def get_run_summary(run_id: str):
         "summary": summary_json or {},
         "rows": rows,
     }
+
+
+_SAFE_ID = re.compile(r"[A-Za-z0-9_.-]+")
+_SAFE_PNG = re.compile(r"[A-Za-z0-9_.-]+\.png", re.IGNORECASE)
+
+
+@router.get("/runs/{run_id}/plots/{filename}")
+def get_run_plot(run_id: str, filename: str):
+    """Serve a PNG plot (e.g. pareto_spider.png) from a run's results dir.
+
+    run_id and filename are validated strictly to prevent path traversal:
+    no path separators, no "..", only *.png, and the resolved path must stay
+    inside that run's results directory.
+    """
+    if not run_id or run_id in (".", "..") or not _SAFE_ID.fullmatch(run_id):
+        raise HTTPException(status_code=400, detail="Invalid run id")
+    if (
+        not filename
+        or "/" in filename
+        or "\\" in filename
+        or ".." in filename
+        or not _SAFE_PNG.fullmatch(filename)
+    ):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    run_dir = settings.RUNS_DIR / run_id
+    if not run_dir.exists() or not run_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Run not found")
+    results_dir = run_dir / "results"
+    if not results_dir.exists() or not results_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Results not found for this run")
+
+    results_dir_resolved = results_dir.resolve()
+    target = None
+    for candidate in results_dir.rglob(filename):
+        if not candidate.is_file():
+            continue
+        if candidate.name.lower() != filename.lower():
+            continue
+        resolved = candidate.resolve()
+        try:
+            resolved.relative_to(results_dir_resolved)
+        except ValueError:
+            continue
+        target = resolved
+        break
+    if target is None:
+        raise HTTPException(status_code=404, detail="Plot not found")
+
+    return FileResponse(str(target), media_type="image/png")
 
 
 @router.post("/runs")

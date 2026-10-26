@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock, PropertyMock
@@ -263,6 +264,64 @@ class TestMissingResults:
     def test_get_summary_nonexistent(self):
         response = client.get("/api/runs/nonexistent-run-id/summary")
         assert response.status_code == 404
+
+
+class TestRunPlots:
+    """Tests for the /runs/{run_id}/plots/{filename} plot-serving endpoint."""
+
+    def _make_run_with_plot(self, run_id="plot-run-1", dataset="spider",
+                            filename="pareto_spider.png"):
+        run_dir = PROJECT_ROOT / "app_runs" / run_id
+        results_dir = run_dir / "results" / dataset
+        results_dir.mkdir(parents=True, exist_ok=True)
+        png = results_dir / filename
+        png.write_bytes(b"\x89PNG\r\n\x1a\nfake-png")
+        (run_dir / "run_meta.json").write_text(json.dumps({
+            "run_id": run_id, "dataset": dataset, "status": "completed",
+        }))
+        return run_dir, png
+
+    def _cleanup(self, run_dir):
+        shutil.rmtree(run_dir, ignore_errors=True)
+
+    def test_get_plot_returns_png(self):
+        run_dir, png = self._make_run_with_plot()
+        try:
+            response = client.get(f"/api/runs/{run_dir.name}/plots/{png.name}")
+            assert response.status_code == 200, response.text
+            assert response.headers["content-type"].startswith("image/png")
+            assert response.content == png.read_bytes()
+        finally:
+            self._cleanup(run_dir)
+
+    def test_get_plot_missing_404(self):
+        run_dir, _ = self._make_run_with_plot()
+        try:
+            response = client.get(f"/api/runs/{run_dir.name}/plots/nope.png")
+            assert response.status_code == 404
+        finally:
+            self._cleanup(run_dir)
+
+    def test_get_plot_traversal_filename_4xx(self):
+        run_dir, png = self._make_run_with_plot()
+        try:
+            # Directory traversal via filename.
+            response = client.get(f"/api/runs/{run_dir.name}/plots/../escape.png")
+            assert response.status_code in (400, 404), response.status_code
+            # URL-encoded traversal.
+            response = client.get(f"/api/runs/{run_dir.name}/plots/..%2F..%2Fevil.png")
+            assert response.status_code in (400, 404), response.status_code
+            # Non-PNG extension rejected.
+            response = client.get(f"/api/runs/{run_dir.name}/plots/notes.txt")
+            assert response.status_code in (400, 404), response.status_code
+        finally:
+            self._cleanup(run_dir)
+
+    def test_get_plot_traversal_run_id_4xx(self):
+        response = client.get("/api/runs/../x/plots/a.png")
+        assert response.status_code in (400, 404), response.status_code
+        response = client.get("/api/runs/..%2F..%2Fetc/plots/a.png")
+        assert response.status_code in (400, 404), response.status_code
 
 
 class TestLLMConnection:

@@ -144,6 +144,7 @@ def run_absl(
         if fl["sig_agree"] and vote["agreement"] < 0.67:
             reasons.append(f"agreement {vote['agreement']:.2f} < 0.67")
 
+        # Record exactly one entry per tier run, before escalation.
         if not reasons:
             final_sql = vote["sql"]
             tier_records.append({
@@ -151,21 +152,13 @@ def run_absl(
                 "passed": True, "schema_tokens": schema_tokens,
             })
             break  # accepted
-            # what this tier would have returned if capped here
-            # cap_sql is the best SQL that could be returned from this tier:
-            #   - vote["sql"] if it passed execution (exec_ok=True)
-            #   - best[0] if any tier executed successfully and is remembered
-            #   - choices[0]["sql"] as fallback
-            # This captures the generated SQL attempt from this tier, not the
-            # theoretical "would-be-returned" SQL, providing visibility into
-            # what would happen if this tier were the final tier.
-            cap_sql = vote["sql"] if vote["exec_ok"] and vote["sql"] else (
-                best[0] if best else (choices[0]["sql"] if choices else "")
-            )
-            tier_records.append({
-                "tier": t + 1, "budget": budget, "sql": cap_sql,
-                "passed": False, "schema_tokens": schema_tokens,
-            })
+        cap_sql = vote["sql"] if vote["exec_ok"] and vote["sql"] else (
+            best[0] if best else (choices[0]["sql"] if choices else "")
+        )
+        tier_records.append({
+            "tier": t + 1, "budget": budget, "sql": cap_sql,
+            "passed": False, "schema_tokens": schema_tokens,
+        })
 
         # escalation
         if t < len(tiers) - 1:
