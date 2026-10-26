@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend,
+  ResponsiveContainer, Legend, ReferenceLine,
 } from 'recharts';
 import { FileText, RefreshCw } from 'lucide-react';import { runsAPI } from '@/lib/api';
 
@@ -79,6 +79,32 @@ export default function ResultsDashboard() {
   const fixedBudgetRows = rows.filter((r: any) => r.strategy !== 's0' && r.strategy !== 'absl' && r.budget != null);
   const s0Row = rows.find((r: any) => r.strategy === 's0');
   const abslRow = rows.find((r: any) => r.strategy === 'absl');
+
+  // One line per strategy (s1, s2, s3, s6, absl_cap). Shared x-axis is the
+  // numeric budget, sorted ascending; each strategy contributes its EX at the
+  // budgets where it has a row.
+  const CHART_STRATEGIES = ['s1', 's2', 's3', 's6', 'absl_cap'];
+  const CHART_COLORS: Record<string, string> = {
+    s1: '#3b82f6',
+    s2: '#ef4444',
+    s3: '#10b981',
+    s6: '#f59e0b',
+    absl_cap: '#6366f1',
+  };
+  const byBudget: Record<number, Record<string, number | null>> = {};
+  fixedBudgetRows.forEach((r: any) => {
+    const b = Number(r.budget);
+    if (!byBudget[b]) {
+      byBudget[b] = { budget: b } as Record<string, number | null>;
+      CHART_STRATEGIES.forEach((s) => {
+        byBudget[b][s] = null;
+      });
+    }
+    byBudget[b][r.strategy] = parseFloat(r.ex);
+  });
+  const chartData = Object.values(byBudget).sort(
+    (a: any, b: any) => a.budget - b.budget
+  );
   const nQuestions = runMeta?.n_questions || (rows.length > 0 ? Math.max(...rows.map((r: any) => parseInt(r.n) || 0)) : 0);
   const isDemoSample = nQuestions <= 5;
 
@@ -152,26 +178,51 @@ export default function ResultsDashboard() {
           <h3 className="font-semibold text-gray-900 mb-4">EX vs Schema-Token Budget</h3>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={fixedBudgetRows.map((r: any) => ({
-                  name: `B=${r.budget}`,
-                  ex: parseFloat(r.ex),
-                  strategy: r.strategy,
-                }))}
-              >
+              <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                <YAxis label={{ value: 'EX', angle: -90, position: 'insideLeft' }} />
-                <Tooltip />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="ex"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={false}
-                  name="EX"
+                <XAxis
+                  dataKey="budget"
+                  type="number"
+                  tick={{ fontSize: 10 }}
+                  label={{ value: 'Schema-token budget (B)', position: 'bottom', offset: 0 }}
                 />
+                <YAxis
+                  label={{ value: 'EX', angle: -90, position: 'insideLeft' }}
+                  domain={[0, 1]}
+                  tick={{ fontSize: 10 }}
+                />
+                <Tooltip />
+                <Legend verticalAlign="top" align="right" />
+                {CHART_STRATEGIES.map((strategy) => (
+                  <Line
+                    key={strategy}
+                    type="linear"
+                    dataKey={strategy}
+                    stroke={CHART_COLORS[strategy]}
+                    strokeWidth={2}
+                    dot={{
+                      fill: CHART_COLORS[strategy],
+                      stroke: CHART_COLORS[strategy],
+                      strokeWidth: 2,
+                      radius: 5,
+                    }}
+                    name={STRATEGY_LABELS[strategy] || strategy.toUpperCase()}
+                  />
+                ))}
+                {s0Row && (
+                  <ReferenceLine
+                    y={parseFloat(s0Row.ex)}
+                    stroke="#94a3b8"
+                    strokeDasharray="4 4"
+                    strokeWidth={2}
+                    label={{
+                      value: `S0 (full schema, EX = ${(parseFloat(s0Row.ex) * 100).toFixed(1)}%)`,
+                      position: 'inside',
+                      fill: '#94a3b8',
+                      fontSize: 11,
+                    }}
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -265,14 +316,24 @@ export default function ResultsDashboard() {
       <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
         <h3 className="font-semibold text-gray-900 mb-4">Generated Plots</h3>
         <div className="space-y-2">
-              {(summary.plots || []).map((p: string, i: number) => (
-                <div key={i} className="flex items-center gap-3 p-3 rounded border border-gray-200">
-                  <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-400">
-                    <FileText className="w-4 h-4" />
+              {(summary.plots || []).map((p: string, i: number) => {
+                const filename = String(p).replace(/.*[\\/]/, '') || String(p);
+                const url = runsAPI.getPlotUrl(runId!, filename);
+                return (
+                  <div key={i} className="flex items-center gap-3 p-3 rounded border border-gray-200">
+                    <div className="w-8 h-8 rounded flex items-center justify-center bg-gray-50">
+                      <img
+                        src={url}
+                        alt={filename}
+                        className="w-7 h-7 object-contain rounded"
+                      />
+                    </div>
+                    <span className="text-sm text-gray-700 font-mono truncate flex-1" title={filename}>
+                      {filename}
+                    </span>
                   </div>
-                  <span className="text-sm text-gray-700 font-mono truncate flex-1">{p}</span>
-                </div>
-              ))}
+                );
+              })}
           {!(summary.plots || []).length && (
             <p className="text-gray-500 text-sm">No plots generated.</p>
           )}
